@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+enum RosterStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole @default(MANAGER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  rosters Roster[]
+}
+
+model Worker {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String?  @unique
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments RosterAssignment[]
+}
+
+model Site {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  timezone  String   @default("Europe/London")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shiftTemplates ShiftTemplate[]
+  rosters        Roster[]
+}
+
+model ShiftTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  startTime   DateTime
+  endTime     DateTime
+  role        String?
+  required    Int      @default(1)
+  active      Boolean  @default(true)
+  siteId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  site        Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  assignments RosterAssignment[]
+}
+
+model Roster {
+  id        String       @id @default(uuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    RosterStatus @default(DRAFT)
+  siteId    String
+  createdBy String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  site        Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  creator     User               @relation(fields: [createdBy], references: [id])
+  assignments RosterAssignment[]
+}
+
+model RosterAssignment {
+  id              String   @id @default(uuid())
+  rosterId        String
+  workerId        String
+  shiftTemplateId String?
+  startTime       DateTime
+  endTime         DateTime
+  role            String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  roster        Roster         @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  worker        Worker         @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  shiftTemplate ShiftTemplate? @relation(fields: [shiftTemplateId], references: [id], onDelete: SetNull)
+
+  @@unique([rosterId, workerId, startTime])
+}
