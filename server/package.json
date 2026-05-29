@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "seed:super-admin": "node src/scripts/seedSuperAdmin.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
