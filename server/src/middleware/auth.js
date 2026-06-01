@@ -20,7 +20,16 @@ export function requireAuth(req, res, next) {
   const token = authHeader.slice('Bearer '.length);
 
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decodedToken.type !== 'access') {
+      return res.status(401).json({
+        error: 'Authentication failed',
+        message: 'Access token required'
+      });
+    }
+
+    req.user = decodedToken;
     return next();
   } catch (error) {
     return res.status(401).json({
