@@ -31,6 +31,10 @@ function getRefreshTokenHash(refreshToken) {
   return createHash('sha256').update(refreshToken).digest('hex');
 }
 
+function getRefreshTokenFromBody(req) {
+  return typeof req.body.refreshToken === 'string' ? req.body.refreshToken.trim() : '';
+}
+
 function getRequestIp(req) {
   return req.ip || req.get('x-forwarded-for')?.split(',')[0]?.trim() || req.socket?.remoteAddress || null;
 }
@@ -328,7 +332,7 @@ router.post('/login', async (req, res, next) => {
 
 router.post('/refresh', async (req, res, next) => {
   try {
-    const refreshToken = req.body.refreshToken;
+    const refreshToken = getRefreshTokenFromBody(req);
 
     if (!refreshToken) {
       return res.status(400).json({
@@ -344,7 +348,7 @@ router.post('/refresh', async (req, res, next) => {
     } catch (error) {
       return res.status(401).json({
         error: 'Refresh failed',
-        message: 'Invalid or expired refresh token'
+        message: 'Refresh token is invalid or its JWT has expired'
       });
     }
 
@@ -355,38 +359,66 @@ router.post('/refresh', async (req, res, next) => {
       });
     }
 
+    const refreshTokenHash = getRefreshTokenHash(refreshToken);
+
     const session = await prisma.session.findFirst({
       where: {
         userId: decodedToken.sub,
-        refreshTokenHash: getRefreshTokenHash(refreshToken),
-        revokedAt: null
+        refreshTokenHash
       },
+      select: {
+        id: true,
+        userId: true,
+        expiresAt: true,
+        revokedAt: true
+      }
+    });
+
+    if (!session) {
+      return res.status(401).json({
+        error: 'Refresh failed',
+        message: 'Session not found for this refresh token'
+      });
+    }
+
+    if (session.revokedAt) {
+      return res.status(401).json({
+        error: 'Refresh failed',
+        message: 'Session has been revoked'
+      });
+    }
+
+    if (session.expiresAt <= new Date()) {
+      return res.status(401).json({
+        error: 'Refresh failed',
+        message: 'Session has expired'
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
       include: {
-        user: {
-          include: {
-            workerAccount: true,
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                industryType: true,
-                status: true,
-                active: true
-              }
-            }
+        workerAccount: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            industryType: true,
+            status: true,
+            active: true
           }
         }
       }
     });
 
-    if (!session || session.expiresAt <= new Date()) {
+    if (!user) {
       return res.status(401).json({
         error: 'Refresh failed',
-        message: 'Session is invalid or expired'
+        message: 'User for this session was not found'
       });
     }
 
-    if (!session.user.isActive) {
+    if (!user.isActive) {
       return res.status(403).json({
         error: 'Account disabled',
         message: 'This account has been deactivated'
@@ -394,7 +426,7 @@ router.post('/refresh', async (req, res, next) => {
     }
 
     return res.status(200).json({
-      accessToken: signAccessToken(session.user)
+      accessToken: signAccessToken(user)
     });
   } catch (error) {
     return next(error);
@@ -403,7 +435,7 @@ router.post('/refresh', async (req, res, next) => {
 
 router.post('/logout', async (req, res, next) => {
   try {
-    const refreshToken = req.body.refreshToken;
+    const refreshToken = getRefreshTokenFromBody(req);
 
     if (!refreshToken) {
       return res.status(400).json({
@@ -414,18 +446,60 @@ router.post('/logout', async (req, res, next) => {
 
     const session = await prisma.session.findFirst({
       where: {
-        refreshTokenHash: getRefreshTokenHash(refreshToken),
-        revokedAt: null
+        refreshTokenHash: getRefreshTokenHash(refreshToken)
       },
-      select: { id: true }
+      select: {
+        id: true,
+        expiresAt: true,
+        revokedAt: true,
+        userId: true
+      }
     });
 
-    if (session) {
-      await prisma.session.update({
-        where: { id: session.id },
-        data: { revokedAt: new Date() }
+    if (!session) {
+      return res.status(404).json({
+        error: 'Logout failed',
+        message: 'Session not found for this refresh token'
       });
     }
+
+    if (session.revokedAt) {
+      return res.status(409).json({
+        error: 'Logout failed',
+        message: 'Session has already been revoked'
+      });
+    }
+
+    if (session.expiresAt <= new Date()) {
+      return res.status(401).json({
+        error: 'Logout failed',
+        message: 'Session has expired'
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: { id: true, isActive: true }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        error: 'Logout failed',
+        message: 'User for this session was not found'
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        error: 'Account disabled',
+        message: 'This account has been deactivated'
+      });
+    }
+
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { revokedAt: new Date() }
+    });
 
     return res.status(200).json({
       message: 'Logged out successfully'
