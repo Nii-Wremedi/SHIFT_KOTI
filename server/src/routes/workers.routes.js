@@ -25,7 +25,8 @@ const workerSelect = {
       email: true,
       firstName: true,
       lastName: true,
-      role: true
+      role: true,
+      isActive: true
     }
   },
   approver: {
@@ -95,21 +96,28 @@ router.patch('/:workerId/approve', async (req, res, next) => {
   try {
     const worker = await prisma.worker.findUnique({
       where: { id: req.params.workerId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
 
     if (!worker) {
       return handleWorkerNotFound(res);
     }
 
-    const updatedWorker = await prisma.worker.update({
-      where: { id: req.params.workerId },
-      data: {
-        status: 'ACTIVE',
-        approvedAt: new Date(),
-        approvedBy: getAdminUserId(req)
-      },
-      select: workerSelect
+    const updatedWorker = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: worker.userId },
+        data: { isActive: true }
+      });
+
+      return tx.worker.update({
+        where: { id: req.params.workerId },
+        data: {
+          status: 'ACTIVE',
+          approvedAt: new Date(),
+          approvedBy: getAdminUserId(req)
+        },
+        select: workerSelect
+      });
     });
 
     return res.status(200).json({
@@ -125,19 +133,26 @@ router.patch('/:workerId/suspend', async (req, res, next) => {
   try {
     const worker = await prisma.worker.findUnique({
       where: { id: req.params.workerId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
 
     if (!worker) {
       return handleWorkerNotFound(res);
     }
 
-    const updatedWorker = await prisma.worker.update({
-      where: { id: req.params.workerId },
-      data: {
-        status: 'SUSPENDED'
-      },
-      select: workerSelect
+    const updatedWorker = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: worker.userId },
+        data: { isActive: false }
+      });
+
+      return tx.worker.update({
+        where: { id: req.params.workerId },
+        data: {
+          status: 'SUSPENDED'
+        },
+        select: workerSelect
+      });
     });
 
     return res.status(200).json({
@@ -153,19 +168,26 @@ router.patch('/:workerId/reactivate', async (req, res, next) => {
   try {
     const worker = await prisma.worker.findUnique({
       where: { id: req.params.workerId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
 
     if (!worker) {
       return handleWorkerNotFound(res);
     }
 
-    const updatedWorker = await prisma.worker.update({
-      where: { id: req.params.workerId },
-      data: {
-        status: 'ACTIVE'
-      },
-      select: workerSelect
+    const updatedWorker = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: worker.userId },
+        data: { isActive: true }
+      });
+
+      return tx.worker.update({
+        where: { id: req.params.workerId },
+        data: {
+          status: 'ACTIVE'
+        },
+        select: workerSelect
+      });
     });
 
     return res.status(200).json({

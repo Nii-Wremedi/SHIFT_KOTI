@@ -211,7 +211,8 @@ router.post('/register-worker', async (req, res, next) => {
           passwordHash,
           firstName,
           lastName,
-          role: 'WORKER'
+          role: 'WORKER',
+          isActive: false
         }
       });
 
