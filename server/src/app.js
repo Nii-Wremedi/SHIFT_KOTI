@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js';
 import departmentRoutes from './routes/departments.routes.js';
 import jobRoleRoutes from './routes/jobRoles.routes.js';
 import organizationRoutes from './routes/organizations.routes.js';
+import siteRoutes from './routes/sites.routes.js';
 import workerRoutes from './routes/workers.routes.js';
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/sites', siteRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/job-roles', jobRoleRoutes);
 app.use('/api/workers', workerRoutes);
